@@ -690,9 +690,9 @@ class AutoDateFormatter(ticker.Formatter):
                        1.0: rcParams['date.autoformatter.day'],
                        1. / HOURS_PER_DAY: rcParams['date.autoformatter.hour'],
                        1. / (MINUTES_PER_DAY):
-                           rcParams['date.autoformatter.minute'],
+                       rcParams['date.autoformatter.minute'],
                        1. / (SEC_PER_DAY):
-                           rcParams['date.autoformatter.second']}
+                       rcParams['date.autoformatter.second']}
 
     def __call__(self, x, pos=None):
         locator_unit_scale = float(self._locator._get_unit())
@@ -1013,11 +1013,39 @@ class AutoDateLocator(DateLocator):
         return self.get_locator(vmin, vmax).tick_values(vmin, vmax)
 
     def nonsingular(self, vmin, vmax):
-        # whatever is thrown at us, we can scale the unit.
-        # But default nonsingular date plots at an ~4 year period.
+        # Scale the view for singular points so that the
+        # view is based on the context
+        # We make assumptions on the context based on the
+        # singular point
+
         if vmin == vmax:
-            vmin = vmin - DAYS_PER_YEAR * 2
-            vmax = vmax + DAYS_PER_YEAR * 2
+            expander_factor = 0
+            dt = num2date(vmin)
+
+            # Order of Magnitude
+            if self.hms0d['bysecond'] != 0:
+                expander_factor = SEC_PER_MIN
+            elif self.hms0d['byminute'] != 0:
+                expander_factor = MIN_PER_HOUR
+            elif self.hms0d['byhour'] != 0:
+                expander_factor = HOURS_PER_DAY
+            elif dt.day > 1:
+                # Use weeks
+                expander_factor = DAYS_PER_WEEK
+            elif dt.isoweekday() > 1:
+                # Use months
+                expander_factor = DAYS_PER_MONTH
+            elif dt.month() > 1:
+                # Use years
+                expander_factor = DAYS_PER_YEAR
+            else:
+                vmin = vmin - DAYS_PER_YEAR * 2
+                vmax = vmax + DAYS_PER_YEAR * 2
+
+            expander = expander_factor * .04
+            vmin = math.floor(vmin - expander)
+            vmax = math.ceil(vmax + expander)
+
         return vmin, vmax
 
     def set_axis(self, axis):
@@ -1221,7 +1249,7 @@ class MonthLocator(RRuleLocator):
             bymonth = [x.item() for x in bymonth.astype(int)]
 
         rule = rrulewrapper(MONTHLY, bymonth=bymonth, bymonthday=bymonthday,
-                         interval=interval, **self.hms0d)
+                            interval=interval, **self.hms0d)
         RRuleLocator.__init__(self, rule, tz)
 
 
